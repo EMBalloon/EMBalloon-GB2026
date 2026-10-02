@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Profil Vent AROME</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout : une colonne d'instrument — réglages en haut, bandeau de contexte, puis le profil lu du haut (altitude) vers le bas (sol) */
+:root{
+  --bg:#f3f5f2; --panel:#ffffff; --ink:#18222d; --muted:#5d6b78; --line:#d8ddd8;
+  --accent:#1d6aa8;      /* ciel du matin */
+  --flame:#d2691e;       /* brûleur : niveaux réellement calculés par le modèle */
+  --weak:#a3adb6;        /* direction peu fiable en vent faible */
+  --bar:#cfe0ee;
+  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f151c; --panel:#161f29; --ink:#e4eaf0; --muted:#8b99a7; --line:#28343f;
+    --accent:#5aa7e6; --flame:#f08a3e; --weak:#5c6773; --bar:#1f3a52; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f151c; --panel:#161f29; --ink:#e4eaf0; --muted:#8b99a7; --line:#28343f;
+  --accent:#5aa7e6; --flame:#f08a3e; --weak:#5c6773; --bar:#1f3a52; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-display);font-size:15px;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:720px;margin:0 auto;padding-inline:16px;padding-block:18px 40px;display:flex;flex-direction:column;gap:16px}
+header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.01em;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.45}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:520px){ .grid3{grid-template-columns:1fr 1fr} .grid3 .field:first-child{grid-column:1 / -1} }
+input,select,button{font:inherit;color:inherit}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);
+  font-family:var(--font-data);font-size:14px;min-width:0}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button{border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:9px 12px;font-weight:700;cursor:pointer;white-space:nowrap}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.actions button{flex:1 1 140px}
+
+.status{font-size:13px;color:var(--muted);min-height:18px}
+.status.err{color:#c0392b}
+
+.context{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+@media (max-width:520px){ .context{grid-template-columns:1fr 1fr} }
+.context div{background:var(--panel);padding:9px 11px;min-width:0}
+.context .k{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.context .v{font-family:var(--font-data);font-size:13px;margin-top:2px;overflow-wrap:anywhere}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--flame);display:inline-block}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:13px;font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;background:var(--panel);text-align:right;font-family:var(--font-display);font-size:10px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);font-weight:700}
+th:first-child,td:first-child{text-align:left}
+td{padding:4px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr.model td:first-child{color:var(--flame);font-weight:600}
+tr.clamped td{color:var(--weak)}
+td.hdg{display:flex;justify-content:flex-end;align-items:center;gap:6px}
+td.hdg svg{width:14px;height:14px;fill:var(--accent);flex:none}
+td.hdg.weak{color:var(--weak)}
+td.hdg.weak svg{fill:var(--weak)}
+td.spd{min-width:120px}
+.spdcell{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.spdbar{height:6px;border-radius:3px;background:var(--bar);flex:1 1 auto;max-width:70px;position:relative;overflow:hidden}
+.spdbar i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:3px}
+
+/* Tranches de 500 m */
+tr.band{cursor:pointer;background:var(--bg);user-select:none;-webkit-user-select:none}
+tr.band td{padding:9px 10px;font-weight:600;border-bottom:1px solid var(--line)}
+tr.band td:first-child{font-family:var(--font-display);font-weight:800;color:var(--accent)}
+tr.band .caret{display:inline-block;width:14px;color:var(--muted);font-size:11px}
+tr.band .here{color:var(--flame);margin-left:4px}
+tr.band:hover td{background:var(--panel)}
+tr.band:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+tr.sub td:first-child{padding-left:28px}
+tr.current td{background:color-mix(in srgb, var(--flame) 16%, transparent);font-weight:600}
+tr.current td:first-child{color:var(--flame)}
+.btn-on{background:var(--flame)!important;border-color:var(--flame)!important;color:#fff!important}
+
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+summary{cursor:pointer;font-weight:700;font-size:13px}
+details .tablewrap{margin-top:10px;border:none}
+.note{font-size:12px;color:var(--muted);line-height:1.5;margin:0}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:13px;max-width:90vw;text-align:center}
+@media (prefers-reduced-motion: no-preference){ .toast{transition:opacity .2s} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Profil Vent AROME</h1>
+    <p>Vent du modèle Météo-France pour un point et une heure, ré-échantillonné tous les 100&nbsp;m. Export CSV au format GB Tactical.</p>
+  </header>
+
+  <section class="panel" aria-label="Réglages">
+    <div class="row">
+      <div class="field">
+        <label for="coords">Coordonnées (lat, lon)</label>
+        <input id="coords" type="text" inputmode="decimal" placeholder="49.334431, 3.911512" autocomplete="off">
+      </div>
+      <button id="btn-geo" type="button" title="Utiliser ma position">◎ Ma position</button>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="cur-alt">Altitude actuelle (m au-dessus de la mer)</label>
+        <input id="cur-alt" type="number" inputmode="numeric" step="10" placeholder="ex. 1500 — vide pour ne rien marquer">
+      </div>
+      <button id="btn-gps-alt" type="button" title="Mettre à jour l'altitude en continu avec le GPS">Suivre GPS</button>
+    </div>
+    <div class="grid3">
+      <div class="field">
+        <label for="model">Modèle</label>
+        <select id="model">
+          <option value="arome">AROME France · 2,5 km</option>
+          <option value="arpege">ARPEGE Europe · 11 km</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="ref">Altitudes</label>
+        <select id="ref">
+          <option value="msl">Au-dessus de la mer</option>
+          <option value="agl">Au-dessus du sol</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="top">Jusqu'à</label>
+        <select id="top">
+          <option value="2000">2 000 m</option>
+          <option value="3000" selected>3 000 m</option>
+          <option value="4000">4 000 m</option>
+          <option value="6000">6 000 m</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="hour">Heure (locale)</label>
+      <select id="hour" disabled><option>Charge d'abord les données</option></select>
+    </div>
+    <div class="actions">
+      <button id="btn-load" class="primary" type="button">Charger le dernier run</button>
+      <button id="btn-csv" type="button" disabled>Télécharger le CSV</button>
+      <button id="btn-copy" type="button" disabled>Copier le CSV</button>
+    </div>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <section class="context" id="context" aria-label="Contexte de la prévision" hidden>
+    <div><div class="k">Run</div><div class="v" id="c-run">—</div></div>
+    <div><div class="k">Valide à</div><div class="v" id="c-valid">—</div></div>
+    <div><div class="k">Point de grille</div><div class="v" id="c-grid">—</div></div>
+    <div><div class="k">Sol</div><div class="v" id="c-elev">—</div></div>
+  </section>
+
+  <div class="legend" id="legend" hidden>
+    <span><i class="dot"></i>niveau calculé par le modèle (±50 m)</span>
+    <span><b style="color:var(--flame)">●</b> / <b style="color:var(--flame)">←</b> altitude actuelle</span>
+    <span>tranches : moyenne des couches de 100 m, touchez pour déplier</span>
+    <span style="color:var(--weak)">gris : direction peu fiable (&lt; 5 km/h) ou hors des niveaux du modèle</span>
+  </div>
+
+  <div class="tablewrap" id="profile-wrap" hidden>
+    <table>
+      <thead><tr><th id="th-alt">Alt. (m)</th><th>ft</th><th>Vers</th><th>Vitesse km/h</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <details id="raw" hidden>
+    <summary>Niveaux bruts du modèle à cette heure</summary>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Source</th><th>Alt. mer</th><th>Alt. sol</th><th>Vers</th><th>km/h</th></tr></thead>
+        <tbody id="raw-tbody"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <p class="note">
+    Sous 200&nbsp;m sol, les valeurs viennent des niveaux de hauteur du modèle (10 à 200&nbsp;m au-dessus du sol).
+    Au-dessus, des niveaux de pression, situés par leur géopotentiel. Entre deux niveaux, interpolation linéaire des composantes du vent.
+    Le CSV « au-dessus de la mer » est directement comparable à GB Tactical.
+    Données Météo-France via Open-Meteo (CC BY 4.0), usage non commercial.
+  </p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+'use strict';
+
+var MODELS = {
+  arome:  { api:'meteofrance_arome_france',  meta:'meteofrance_arome_france0025', file:'arome',  label:'AROME' },
+  arpege: { api:'meteofrance_arpege_europe', meta:'meteofrance_arpege_europe',    file:'arpege', label:'ARPEGE' }
+};
+var HEIGHTS = [10, 20, 50, 100, 150, 200];                                    // m au-dessus du sol
+var LEVELS  = [1000, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500];  // hPa
+var STORE = 'profil-vent-arome-v1';
+
+var $ = function(id){ return document.getElementById(id); };
+var state = { data:null, model:null, run:null, profile:null, rows:null, csv:'',
+              open:{}, curAlt:null, lastBand:null, watchId:null };
+var BAND = 500;
+
+/* ---------- préférences ---------- */
+function loadPrefs(){
+  var p = {};
+  try { p = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch(e){}
+  $('coords').value = p.coords || '49.334431, 3.911512';
+  if(p.model) $('model').value = p.model;
+  if(p.ref) $('ref').value = p.ref;
+  if(p.top) $('top').value = p.top;
+  if(p.curAlt != null && p.curAlt !== ''){ $('cur-alt').value = p.curAlt; state.curAlt = parseFloat(p.curAlt); }
+}
+function savePrefs(){
+  try {
+    localStorage.setItem(STORE, JSON.stringify({
+      coords:$('coords').value, model:$('model').value, ref:$('ref').value, top:$('top').value,
+      curAlt:$('cur-alt').value
+    }));
+  } catch(e){}
+}
+
+/* ---------- utilitaires ---------- */
+function status(msg, err){ var s=$('status'); s.textContent=msg||''; s.className='status'+(err?' err':''); }
+var toastT;
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.hidden=false;
+  clearTimeout(toastT); toastT=setTimeout(function(){ t.hidden=true; }, 2600);
+}
+function parseCoords(txt){
+  var n = (txt||'').replace(/[;]/g,',').split(/[\s,]+/).map(parseFloat).filter(function(x){ return !isNaN(x); });
+  if(n.length < 2) return null;
+  if(Math.abs(n[0]) > 90 || Math.abs(n[1]) > 180) return null;
+  return { lat:n[0], lon:n[1] };
+}
+function toUV(dirFrom, spd){ var t=(dirFrom+180)*Math.PI/180; return { u:spd*Math.sin(t), v:spd*Math.cos(t) }; }
+function fromUV(u, v){
+  return { spd:Math.hypot(u,v), dirFrom:((Math.atan2(u,v)*180/Math.PI)+180+360)%360 };
+}
+function pad3(n){ n=Math.round(n)%360; return ('00'+n).slice(-3); }
+function fmtUTC(d){
+  return ('0'+d.getUTCDate()).slice(-2)+'/'+('0'+(d.getUTCMonth()+1)).slice(-2)+' '
+       + ('0'+d.getUTCHours()).slice(-2)+'Z';
+}
+function localLabel(iso){                 // "2026-10-02T11:00" (déjà en heure locale du point)
+  var days=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+  var y=+iso.slice(0,4), m=+iso.slice(5,7), d=+iso.slice(8,10);
+  var wd = new Date(Date.UTC(y,m-1,d)).getUTCDay();
+  return days[wd]+' '+iso.slice(8,10)+'/'+iso.slice(5,7)+' · '+iso.slice(11,16);
+}
+function isoToEpoch(iso, offsetS){
+  var t = Date.UTC(+iso.slice(0,4), +iso.slice(5,7)-1, +iso.slice(8,10), +iso.slice(11,13), +iso.slice(14,16));
+  return t - offsetS*1000;
+}
+function parseJSONLoose(txt){
+  try { return JSON.parse(txt); }
+  catch(e){ return JSON.parse(txt.replace(/\bNaN\b/g,'null').replace(/-?\bInfinity\b/g,'null')); }
+}
+
+/* ---------- requêtes ---------- */
+function buildURL(c, model){
+  var v = [];
+  HEIGHTS.forEach(function(h){ v.push('wind_speed_'+h+'m','wind_direction_'+h+'m'); });
+  LEVELS.forEach(function(p){ v.push('wind_speed_'+p+'hPa','wind_direction_'+p+'hPa','geopotential_height_'+p+'hPa'); });
+  return 'https://api.open-meteo.com/v1/forecast'
+    + '?latitude='+c.lat.toFixed(5)+'&longitude='+c.lon.toFixed(5)
+    + '&hourly='+v.join(',')
+    + '&models='+model.api
+    + '&wind_speed_unit=kmh&forecast_days=2&timezone=auto';
+}
+function fetchRun(model){
+  return fetch('https://api.open-meteo.com/data/'+model.meta+'/static/meta.json')
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){ return (j && j.last_run_initialisation_time) ? new Date(j.last_run_initialisation_time*1000) : null; })
+    .catch(function(){ return null; });
+}
+
+function load(){
+  var c = parseCoords($('coords').value);
+  if(!c){ status('Coordonnées illisibles. Exemple : 49.334431, 3.911512', true); return; }
+  var model = MODELS[$('model').value];
+  savePrefs();
+  $('btn-load').disabled = true;
+  status('Chargement '+model.label+'…');
+  Promise.all([
+    fetch(buildURL(c, model)).then(function(r){
+      return r.text().then(function(t){
+        var j = parseJSONLoose(t);
+        if(!r.ok || j.error) throw new Error(j.reason || ('HTTP '+r.status));
+        return j;
+      });
+    }),
+    fetchRun(model)
+  ]).then(function(res){
+    state.data = res[0]; state.model = model; state.run = res[1];
+    fillHours();
+    render();
+    status('');
+  }).catch(function(e){
+    status('Échec du chargement : '+e.message+'. Vérifie la connexion, ou que le point est dans la zone du modèle.', true);
+  }).finally(function(){ $('btn-load').disabled = false; });
+}
+
+/* ---------- heures ---------- */
+function fillHours(){
+  var d = state.data, sel = $('hour'), now = Date.now();
+  var prev = sel.value;
+  sel.innerHTML = '';
+  var best = -1, bestDelta = Infinity;
+  d.hourly.time.forEach(function(iso, i){
+    var t = isoToEpoch(iso, d.utc_offset_seconds);
+    if(t < now - 3600*1000) return;                       // passé : inutile
+    var o = document.createElement('option');
+    o.value = i; o.textContent = localLabel(iso);
+    sel.appendChild(o);
+    var dl = Math.abs(t - now);
+    if(dl < bestDelta){ bestDelta = dl; best = i; }
+  });
+  sel.disabled = sel.options.length === 0;
+  var keep = Array.prototype.some.call(sel.options, function(o){ return o.value === prev; });
+  sel.value = keep ? prev : String(best);
+}
+
+/* ---------- profil ---------- */
+function rawLevels(idx){
+  var h = state.data.hourly, elev = state.data.elevation || 0, pts = [];
+  HEIGHTS.forEach(function(z){
+    var s = h['wind_speed_'+z+'m'], d = h['wind_direction_'+z+'m'];
+    if(s && d && s[idx] != null && d[idx] != null){
+      pts.push({ alt:elev+z, src:z+' m sol', spd:s[idx], dirFrom:d[idx] });
+    }
+  });
+  var topH = pts.length ? Math.max.apply(null, pts.map(function(p){ return p.alt; })) : elev;
+  LEVELS.forEach(function(p){
+    var s = h['wind_speed_'+p+'hPa'], d = h['wind_direction_'+p+'hPa'], g = h['geopotential_height_'+p+'hPa'];
+    if(s && d && g && s[idx] != null && d[idx] != null && g[idx] != null && g[idx] > topH + 30){
+      pts.push({ alt:g[idx], src:p+' hPa', spd:s[idx], dirFrom:d[idx] });
+    }
+  });
+  pts.sort(function(a,b){ return a.alt - b.alt; });
+  return pts;
+}
+
+function windAt(pts, alt){
+  var n = pts.length;
+  if(alt <= pts[0].alt) return { spd:pts[0].spd, dirFrom:pts[0].dirFrom, clamped:alt < pts[0].alt - 50 };
+  if(alt >= pts[n-1].alt) return { spd:pts[n-1].spd, dirFrom:pts[n-1].dirFrom, clamped:alt > pts[n-1].alt + 50 };
+  for(var i = 0; i < n-1; i++){
+    var a = pts[i], b = pts[i+1];
+    if(alt >= a.alt && alt <= b.alt){
+      var t = (alt - a.alt) / (b.alt - a.alt);
+      var ua = toUV(a.dirFrom, a.spd), ub = toUV(b.dirFrom, b.spd);
+      var w = fromUV(ua.u + t*(ub.u-ua.u), ua.v + t*(ub.v-ua.v));
+      return { spd:w.spd, dirFrom:w.dirFrom, clamped:false };
+    }
+  }
+  return null;
+}
+
+function arrow(hdg){
+  return '<svg viewBox="0 0 16 16" aria-hidden="true" style="transform:rotate('+hdg.toFixed(0)+'deg)">'
+       + '<path d="M8 1.5 L12.5 14 L8 11 L3.5 14 Z"/></svg>';
+}
+
+function windCells(hdg, spd, maxSpd){
+  var weak = spd < 5;
+  return '<td class="hdg'+(weak ? ' weak' : '')+'">'+pad3(hdg)+'°'+arrow(hdg)+'</td>'
+    + '<td class="spd"><div class="spdcell"><div class="spdbar"><i style="width:'
+    + Math.min(100, 100*spd/maxSpd).toFixed(0)+'%"></i></div>'+spd.toFixed(1)+'</div></td>';
+}
+function rowHTML(x, maxSpd){
+  var cls = 'sub' + (x.model ? ' model' : '') + (x.clamped ? ' clamped' : '');
+  return '<tr class="'+cls+'"'+(x.src ? ' title="'+x.src+'"' : '')+'>'
+    + '<td>'+x.z+(x.model ? ' ◆' : '')+'</td>'
+    + '<td>'+Math.round(x.z*3.28084)+'</td>'
+    + windCells(x.hdg, x.spd, maxSpd) + '</tr>';
+}
+
+// Altitude actuelle exprimée dans la référence affichée (mer ou sol), ou null
+function currentDisplayAlt(elev, ref){
+  if(state.curAlt == null || isNaN(state.curAlt)) return null;
+  return ref === 'agl' ? state.curAlt - elev : state.curAlt;
+}
+
+function renderTable(rows, maxSpd, pts, elev, ref, top){
+  var cur = currentDisplayAlt(elev, ref);
+  var curInRange = cur != null && cur >= 0 && cur <= top;
+  var curBand = curInRange ? Math.max(BAND, Math.ceil(cur / BAND) * BAND) : null;
+  // Déplie automatiquement la tranche où l'on se trouve quand on en change
+  if(curBand != null && curBand !== state.lastBand){ state.open[curBand] = true; }
+  state.lastBand = curBand;
+
+  var curRow = null;
+  if(curInRange){
+    var w = windAt(pts, state.curAlt);
+    if(w) curRow = { hdg:(w.dirFrom + 180) % 360, spd:w.spd };
+  }
+
+  var html = '';
+  for(var hi = Math.ceil(top / BAND) * BAND; hi > 0; hi -= BAND){
+    var lo = hi - BAND;
+    var inBand = rows.filter(function(x){ return x.z <= hi && (x.z > lo || (lo === 0 && x.z === 0)); });
+    if(!inBand.length) continue;
+    // Moyenne vectorielle des couches de 100 m de la tranche
+    var su = 0, sv = 0;
+    inBand.forEach(function(x){
+      var t = x.hdg * Math.PI / 180; su += x.spd * Math.sin(t); sv += x.spd * Math.cos(t);
+    });
+    su /= inBand.length; sv /= inBand.length;
+    var mSpd = Math.hypot(su, sv), mHdg = ((Math.atan2(su, sv) * 180 / Math.PI) + 360) % 360;
+    var isOpen = !!state.open[hi], here = curBand === hi;
+    var hiShown = Math.min(hi, top);
+
+    html += '<tr class="band" tabindex="0" data-band="'+hi+'" aria-expanded="'+isOpen+'">'
+      + '<td><span class="caret">'+(isOpen ? '▾' : '▸')+'</span>'+lo+'–'+hiShown+' m'
+      + (here ? '<span class="here" title="Vous êtes dans cette tranche">●</span>' : '') + '</td>'
+      + '<td>'+Math.round(lo*3.28084)+'–'+Math.round(hiShown*3.28084)+'</td>'
+      + windCells(mHdg, mSpd, maxSpd) + '</tr>';
+
+    if(isOpen){
+      var placed = false;
+      for(var r = inBand.length - 1; r >= 0; r--){
+        var x = inBand[r];
+        if(here && curRow && !placed && x.z < cur){
+          html += currentRowHTML(cur, curRow, maxSpd); placed = true;
+        }
+        html += rowHTML(x, maxSpd);
+      }
+      if(here && curRow && !placed) html += currentRowHTML(cur, curRow, maxSpd);
+    }
+  }
+  $('tbody').innerHTML = html;
+}
+
+function currentRowHTML(cur, w, maxSpd){
+  return '<tr class="sub current" title="Altitude actuelle">'
+    + '<td>'+Math.round(cur)+' ←</td>'
+    + '<td>'+Math.round(cur*3.28084)+'</td>'
+    + windCells(w.hdg, w.spd, maxSpd) + '</tr>';
+}
+
+function render(){
+  if(!state.data) return;
+  var idx = parseInt($('hour').value, 10);
+  if(isNaN(idx)) return;
+  var d = state.data, elev = d.elevation || 0;
+  var pts = rawLevels(idx);
+  if(pts.length < 2){
+    status('Pas de données de vent à cette heure pour ce point (hors zone du modèle ?).', true);
+    return;
+  }
+  var ref = $('ref').value, top = parseInt($('top').value, 10);
+
+  // contexte
+  $('context').hidden = false;
+  $('c-run').textContent = state.run ? state.model.label+' '+fmtUTC(state.run) : state.model.label+' · run inconnu';
+  $('c-valid').textContent = localLabel(d.hourly.time[idx]) + ' (' + d.timezone_abbreviation + ')';
+  $('c-grid').textContent = d.latitude.toFixed(3)+', '+d.longitude.toFixed(3);
+  $('c-elev').textContent = Math.round(elev)+' m';
+  $('th-alt').textContent = ref === 'agl' ? 'Alt. sol (m)' : 'Alt. mer (m)';
+
+  // grille 100 m
+  var rows = [], maxSpd = 1;
+  for(var z = 0; z <= top; z += 100){
+    var altMSL = ref === 'agl' ? elev + z : z;
+    var w = windAt(pts, altMSL);
+    if(!w) continue;
+    var near = pts.filter(function(p){ return Math.abs(p.alt - altMSL) <= 50; })[0];
+    var hdg = (w.dirFrom + 180) % 360;
+    var below = ref === 'msl' && altMSL < elev;
+    rows.push({ z:z, hdg:hdg, spd:w.spd, model:!!near, src:near ? near.src : '', clamped:w.clamped || below });
+    if(w.spd > maxSpd) maxSpd = w.spd;
+  }
+  state.rows = rows;
+  state.pts = pts;
+  renderTable(rows, maxSpd, pts, elev, ref, top);
+  $('profile-wrap').hidden = false;
+  $('legend').hidden = false;
+
+  // niveaux bruts
+  var rh = '';
+  for(var k = pts.length - 1; k >= 0; k--){
+    var p = pts[k], ph = (p.dirFrom + 180) % 360;
+    rh += '<tr><td>'+p.src+'</td><td>'+Math.round(p.alt)+'</td><td>'+Math.round(p.alt - elev)+'</td>'
+        + '<td>'+pad3(ph)+'°</td><td>'+p.spd.toFixed(1)+'</td></tr>';
+  }
+  $('raw-tbody').innerHTML = rh;
+  $('raw').hidden = false;
+
+  // CSV au format GB Tactical
+  state.csv = 'Altitude (m);Heading (degrees);Speed (km/h)\r\n'
+    + rows.map(function(x){ return x.z+';'+(Math.round(x.hdg)%360)+';'+x.spd.toFixed(1); }).join('\r\n') + '\r\n';
+  $('btn-csv').disabled = false;
+  $('btn-copy').disabled = false;
+}
+
+function csvName(){
+  var iso = state.data.hourly.time[parseInt($('hour').value, 10)];
+  return 'profil_vent_' + state.model.file + '_' + iso.slice(0,10).replace(/-/g,'') + '_' + iso.slice(11,13) + 'h'
+       + ($('ref').value === 'agl' ? '_sol' : '') + '.csv';
+}
+
+/* ---------- actions ---------- */
+$('btn-load').addEventListener('click', load);
+$('hour').addEventListener('change', render);
+$('ref').addEventListener('change', function(){ savePrefs(); render(); });
+$('top').addEventListener('change', function(){ savePrefs(); render(); });
+$('model').addEventListener('change', function(){ savePrefs(); load(); });
+$('coords').addEventListener('keydown', function(e){ if(e.key === 'Enter') load(); });
+
+// Ouvrir / replier une tranche
+function toggleBand(tr){
+  var b = tr.getAttribute('data-band');
+  state.open[b] = !state.open[b];
+  render();
+}
+$('tbody').addEventListener('click', function(e){
+  var tr = e.target.closest('tr.band'); if(tr) toggleBand(tr);
+});
+$('tbody').addEventListener('keydown', function(e){
+  if(e.key !== 'Enter' && e.key !== ' ') return;
+  var tr = e.target.closest('tr.band'); if(!tr) return;
+  e.preventDefault(); toggleBand(tr);
+  var again = document.querySelector('tr.band[data-band="'+tr.getAttribute('data-band')+'"]');
+  if(again) again.focus();
+});
+
+// Altitude actuelle saisie à la main
+function setCurAlt(v){
+  state.curAlt = (v === '' || v == null || isNaN(parseFloat(v))) ? null : parseFloat(v);
+  savePrefs();
+  render();
+}
+$('cur-alt').addEventListener('input', function(){ setCurAlt(this.value); });
+
+// Altitude actuelle suivie en continu par le GPS
+$('btn-gps-alt').addEventListener('click', function(){
+  var btn = this;
+  if(state.watchId != null){
+    navigator.geolocation.clearWatch(state.watchId);
+    state.watchId = null;
+    btn.classList.remove('btn-on'); btn.textContent = 'Suivre GPS';
+    return;
+  }
+  if(!navigator.geolocation){ toast('GPS indisponible ici'); return; }
+  btn.classList.add('btn-on'); btn.textContent = 'GPS ●';
+  state.watchId = navigator.geolocation.watchPosition(function(p){
+    if(p.coords.altitude == null){ status('Le GPS ne fournit pas d\'altitude sur cet appareil.', true); return; }
+    $('cur-alt').value = Math.round(p.coords.altitude);
+    setCurAlt(p.coords.altitude);
+  }, function(err){
+    status('GPS refusé ou indisponible ('+err.message+'). Saisis l\'altitude à la main.', true);
+    navigator.geolocation.clearWatch(state.watchId); state.watchId = null;
+    btn.classList.remove('btn-on'); btn.textContent = 'Suivre GPS';
+  }, { enableHighAccuracy:true, maximumAge:2000, timeout:20000 });
+});
+
+$('btn-geo').addEventListener('click', function(){
+  if(!navigator.geolocation){ toast('Géolocalisation indisponible ici'); return; }
+  status('Recherche de la position…');
+  navigator.geolocation.getCurrentPosition(function(p){
+    $('coords').value = p.coords.latitude.toFixed(6)+', '+p.coords.longitude.toFixed(6);
+    if(p.coords.altitude != null){ $('cur-alt').value = Math.round(p.coords.altitude); state.curAlt = p.coords.altitude; }
+    load();
+  }, function(err){
+    status('Position refusée ou indisponible ('+err.message+'). Saisis les coordonnées à la main.', true);
+  }, { enableHighAccuracy:true, timeout:15000 });
+});
+
+$('btn-csv').addEventListener('click', function(){
+  if(!state.csv) return;
+  var blob = new Blob([state.csv], { type:'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = csvName();
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  toast('CSV téléchargé ('+state.rows.length+' couches)');
+});
+
+$('btn-copy').addEventListener('click', function(){
+  if(!state.csv) return;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(state.csv).then(function(){ toast('CSV copié'); },
+      function(){ toast('Copie refusée par le navigateur'); });
+  } else {
+    toast('Copie non disponible ici');
+  }
+});
+
+loadPrefs();
+load();
+})();
+</script>
+</body>
+</html>
